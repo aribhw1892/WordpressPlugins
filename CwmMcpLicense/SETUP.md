@@ -79,7 +79,31 @@ Leave the routes public. A security plugin that requires a logged-in user for `/
 
 Save. A bad key or a product id that does not start with `pdt_` is rejected and the previous value stays.
 
-**Settings → SolidWorks MCP usage** should open. An empty table is expected until a trialing or active install sends events.
+**Settings → SolidWorks MCP usage** should open. An empty table is expected until a trialing or active install sends events. That page is the 30-day summary. The charts and the full rows are on the analytics page below.
+
+### Analytics page
+
+Version 1.3.0 adds a page that is only the dashboard. It is not a WordPress admin screen. After uploading that zip and keeping the plugin active, open:
+
+```text
+https://www.cloudcadai.com/cwm-mcp/
+```
+
+WordPress asks for the administrator login the first time, then returns to this address. Bookmark it on the phone. An account that is not an administrator gets a refusal. Signing out is on the page. The license routes under `/wp-json/cwm-mcp/v1` stay public for the host. This page does not, and it asks caches not to store it.
+
+**SolidWorks MCP** in the left admin menu jumps to the same address. The plugin registers `/cwm-mcp/` on the next page load. If that address is a 404, open **Settings → Permalinks**, save, and try again.
+
+The first view is the last 30 days: totals, a day-by-day bar chart, an outcome split, and ranked bars for tools, errors, clients, and SolidWorks versions. A machine mix shows trials against stored subscriptions. Tap a total or a chart link for the underlying rows.
+
+| View | What it shows |
+|---|---|
+| Overview | Totals for the last 30 days, a day-by-day bar chart, an outcome split, and ranked bars for tools, errors, clients, and SolidWorks. |
+| Installs | Every column in `wp_cwm_swx_mcp_installs`. Open a machine for its trial, Dodo ids, tool totals, and payments for that subscription. |
+| Tool calls | Every daily bucket in `wp_cwm_swx_mcp_usage`, with date, machine, tool, and outcome filters. Open a row for the remaining columns. A row is a daily total, so **Calls** can be more than 1. |
+| Orders | Dodo payments for the plugin **Mode** (test and live are different lists), then WooCommerce orders when WooCommerce is active. Open a payment or an order for the detail. |
+| Downloads | WooCommerce download events and who is still allowed to download a file. A site with no WooCommerce download tables says so. GitHub installer releases are not in this list. |
+
+Payments are read from Dodo with the saved API key and are not copied into WordPress. The payment list is cached for about a minute. Usage rows older than 90 days are still deleted by the daily job, so the dashboard cannot show them.
 
 ## Check the license service
 
@@ -250,17 +274,17 @@ If cloudcadai.com cannot be reached:
 
 ### Usage
 
-The host batches tool results and posts them to `/events` about every 20 results and again when the process exits. Rows show up under **Settings → SolidWorks MCP usage** only while that machine is `trialing` or `active`. The page summarizes the last 30 days. The daily job drops rows older than 90 days.
+The host batches tool results and posts them to `/events` about every 20 results and again when the process exits. Rows are stored only while that machine is `trialing` or `active`. **Settings → SolidWorks MCP usage** summarizes the last 30 days. **SolidWorks MCP** in the admin menu lists each install and each daily bucket. The daily job drops rows older than 90 days.
 
 The payload is tool name, outcome, duration, exception type name, API member name for `invoke` and `describe_api`, client name, host version, Windows version, and SolidWorks year. It does not include prompts, tool arguments, file paths, document names, or model data. The field list for customers is in [solidworks-mcp/PRIVACY.md](../../solidworks-mcp/PRIVACY.md).
 
 ## Go-live list
 
 1. The live product is a subscription with a 20-year period, **Trial Period** unchecked, and **Trial Amount** empty. Adaptive Currency is on if Indian cards must work.
-2. Plugin on cloudcadai.com is version 1.1.0 or newer (`cwm-mcp-license.php`), active, mode Live, with the live API key, the live `pdt_` id, and the trial days you want.
+2. Plugin on cloudcadai.com is version 1.1.0 or newer (`cwm-mcp-license.php`), active, mode Live, with the live API key, the live `pdt_` id, and the trial days you want. The analytics page at `/cwm-mcp/` is version 1.3.0.
 3. Permalinks are not Plain. `GET /wp-json/cwm-mcp/v1/status?install_id=` with a GUID returns JSON.
 4. A test-mode `/trial` returned `trialing` and a second call did not move `trial_end`. For live, do this once with a GUID you can delete, or with your own PC.
 5. `POST /portal` for that id returns an `https://` URL and the page opens.
 6. A new host installer is published with [RELEASE.md](../../CWMServer/CWM.SolidWorks.Mcp.Host.Setup/RELEASE.md). Customer machines do not have `CWM_SOLIDWORKS_MCP_LICENSE_URL` set.
-7. On a PC with that installer, the first MCP start shows no payment page, WordPress has one trial row for that PC’s `MachineGuid`, and **SolidWorks MCP usage** gains rows after tools run.
+7. On a PC with that installer, the first MCP start shows no payment page, `https://www.cloudcadai.com/cwm-mcp/` shows one install for that PC’s `MachineGuid`, and **Tool calls** gains rows after tools run.
 8. Reloading the MCP client after adding a card or paying shows the tools starting with no payment dialog. Dodo shows one subscription for that machine, and `metadata.install_id` is the machine id.

@@ -169,6 +169,71 @@ class CWM_Swx_Mcp_Dodo
     }
 
     /**
+     * One page of payments from the plugin mode (test or live).
+     *
+     * @return array{items: array<int, array<string, mixed>>}|WP_Error
+     */
+    public static function list_payments(int $page_number, int $page_size, string $subscription_id = '')
+    {
+        $page_size = max(1, min(100, $page_size));
+        $page_number = max(0, $page_number);
+        $query = array(
+            'page_size' => (string) $page_size,
+            'page_number' => (string) $page_number,
+        );
+        if ($subscription_id !== '') {
+            if (!self::is_object_id($subscription_id, 'sub')) {
+                return array('items' => array());
+            }
+            $query['subscription_id'] = $subscription_id;
+        }
+
+        $cache_key = 'cwm_swx_mcp_pay_' . md5(self::api() . '|' . (string) wp_json_encode($query));
+        $cached = get_transient($cache_key);
+        if (is_array($cached) && isset($cached['items']) && is_array($cached['items'])) {
+            return array('items' => $cached['items']);
+        }
+
+        $decoded = self::request('GET', self::api() . 'payments', array(), $query);
+        if (is_wp_error($decoded)) {
+            return $decoded;
+        }
+        if (!is_array($decoded)) {
+            return new WP_Error('cwm_swx_mcp_dodo', 'Dodo Payments returned no payment list.', array('status' => 502));
+        }
+        $items = isset($decoded['items']) && is_array($decoded['items']) ? $decoded['items'] : array();
+        $result = array('items' => $items);
+        set_transient($cache_key, $result, MINUTE_IN_SECONDS);
+        return $result;
+    }
+
+    /**
+     * @return array<string, mixed>|WP_Error
+     */
+    public static function get_payment(string $payment_id)
+    {
+        if (!self::is_object_id($payment_id, 'pay')) {
+            return new WP_Error('cwm_swx_mcp_payment', 'Unknown payment.', array('status' => 404));
+        }
+
+        $cache_key = 'cwm_swx_mcp_onepay_' . md5(self::api() . '|' . $payment_id);
+        $cached = get_transient($cache_key);
+        if (is_array($cached)) {
+            return $cached;
+        }
+
+        $payment = self::retrieve(self::api() . 'payments/' . rawurlencode($payment_id));
+        if (is_wp_error($payment)) {
+            return $payment;
+        }
+        if (!is_array($payment)) {
+            return new WP_Error('cwm_swx_mcp_payment', 'Dodo Payments has no payment with that id.', array('status' => 404));
+        }
+        set_transient($cache_key, $payment, MINUTE_IN_SECONDS);
+        return $payment;
+    }
+
+    /**
      * @return string|WP_Error
      */
     private static function portal_for_customer(string $customer)

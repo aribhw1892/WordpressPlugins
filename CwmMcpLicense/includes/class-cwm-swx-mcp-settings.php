@@ -109,6 +109,7 @@ class CWM_Swx_Mcp_Settings
         <div class="wrap">
             <h1>SolidWorks MCP</h1>
             <p>Dodo Payments keeps the customer, the card, and the invoices. The free trial is recorded in WordPress until the person adds a card. This page stores the API key the SolidWorks MCP host is not allowed to see.</p>
+            <p><a href="<?php echo esc_url(CWM_Swx_Mcp_Dashboard::public_url()); ?>">Open the analytics dashboard</a>. It is a separate page and only an administrator can open it.</p>
             <?php settings_errors(self::OPTION); ?>
             <form action="options.php" method="post">
                 <?php settings_fields('cwm_swx_mcp_license'); ?>

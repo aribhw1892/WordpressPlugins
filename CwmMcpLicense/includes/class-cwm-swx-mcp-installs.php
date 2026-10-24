@@ -76,6 +76,125 @@ class CWM_Swx_Mcp_Installs
         );
     }
 
+    /**
+     * @return array{installs: int, subscribed: int, trials: int}
+     */
+    public static function counts(): array
+    {
+        global $wpdb;
+        self::maybe_install();
+        $table = self::table_name();
+        $now = current_time('mysql', true);
+        return array(
+            'installs' => (int) $wpdb->get_var("SELECT COUNT(*) FROM {$table}"),
+            'subscribed' => (int) $wpdb->get_var("SELECT COUNT(*) FROM {$table} WHERE subscription_id <> ''"),
+            'trials' => (int) $wpdb->get_var($wpdb->prepare(
+                "SELECT COUNT(*) FROM {$table} WHERE subscription_id = '' AND trial_end_gmt IS NOT NULL AND trial_end_gmt >= %s",
+                $now
+            )),
+        );
+    }
+
+    /**
+     * @return array{subscribed: int, trials: int, ended: int, none: int}
+     */
+    public static function mix(): array
+    {
+        global $wpdb;
+        self::maybe_install();
+        $table = self::table_name();
+        $now = current_time('mysql', true);
+        $row = $wpdb->get_row($wpdb->prepare(
+            "SELECT
+                COALESCE(SUM(CASE WHEN subscription_id <> '' THEN 1 ELSE 0 END), 0) AS subscribed,
+                COALESCE(SUM(CASE WHEN subscription_id = '' AND trial_end_gmt IS NOT NULL AND trial_end_gmt >= %s THEN 1 ELSE 0 END), 0) AS trials,
+                COALESCE(SUM(CASE WHEN subscription_id = '' AND trial_end_gmt IS NOT NULL AND trial_end_gmt < %s THEN 1 ELSE 0 END), 0) AS ended,
+                COALESCE(SUM(CASE WHEN subscription_id = '' AND trial_end_gmt IS NULL THEN 1 ELSE 0 END), 0) AS none
+             FROM {$table}",
+            $now,
+            $now
+        ), ARRAY_A);
+        if (!is_array($row)) {
+            return array('subscribed' => 0, 'trials' => 0, 'ended' => 0, 'none' => 0);
+        }
+        return array(
+            'subscribed' => (int) $row['subscribed'],
+            'trials' => (int) $row['trials'],
+            'ended' => (int) $row['ended'],
+            'none' => (int) $row['none'],
+        );
+    }
+
+    /**
+     * @return array<string, string>|null
+     */
+    public static function find_row(string $install_id): ?array
+    {
+        global $wpdb;
+        self::maybe_install();
+        $row = $wpdb->get_row(
+            $wpdb->prepare(
+                'SELECT install_id, customer_id, subscription_id, trial_end_gmt, pending_session, updated_gmt FROM ' . self::table_name() . ' WHERE install_id = %s',
+                $install_id
+            ),
+            ARRAY_A
+        );
+        return is_array($row) ? self::row_strings($row) : null;
+    }
+
+    /**
+     * @return array{rows: array<int, array<string, string>>, total: int}
+     */
+    public static function list_page(int $page, int $per_page): array
+    {
+        global $wpdb;
+        self::maybe_install();
+        $table = self::table_name();
+        $per_page = max(1, min(100, $per_page));
+        $offset = max(0, $page - 1) * $per_page;
+        $total = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$table}");
+        $rows = $wpdb->get_results(
+            $wpdb->prepare(
+                "SELECT install_id, customer_id, subscription_id, trial_end_gmt, pending_session, updated_gmt FROM {$table} ORDER BY updated_gmt DESC LIMIT %d OFFSET %d",
+                $per_page,
+                $offset
+            ),
+            ARRAY_A
+        );
+        return array(
+            'rows' => self::rows_strings(is_array($rows) ? $rows : array()),
+            'total' => $total,
+        );
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     * @return array<string, string>
+     */
+    private static function row_strings(array $row): array
+    {
+        $out = array();
+        foreach ($row as $key => $value) {
+            $out[(string) $key] = $value === null ? '' : (string) $value;
+        }
+        return $out;
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $rows
+     * @return array<int, array<string, string>>
+     */
+    private static function rows_strings(array $rows): array
+    {
+        $out = array();
+        foreach ($rows as $row) {
+            if (is_array($row)) {
+                $out[] = self::row_strings($row);
+            }
+        }
+        return $out;
+    }
+
     public static function begin_trial(string $install_id, string $trial_end_gmt): bool
     {
         $existing = self::find($install_id);
