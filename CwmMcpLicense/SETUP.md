@@ -1,44 +1,47 @@
 # Set up SolidWorks MCP licensing
 
-The WordPress plugin on `www.cloudcadai.com` is the only license check the SolidWorks MCP host calls. Stripe holds the customer, the trial, the card, and the invoices. The host never sees the Stripe secret.
+The WordPress plugin on `www.cloudcadai.com` is the only license check the SolidWorks MCP host calls. Dodo Payments holds the customer, the card, and the invoices. The host never sees the API key.
+
+The free trial starts in WordPress, with no Dodo customer and no browser. Dodo's own trial starts when the person adds a card. That checkout sends `subscription_data.trial_period_days` for the days still left. Dodo does not have a `trialing` status. While `next_billing_date` is still ahead and the only payment is a zero amount, or there is no card yet, the plugin reports `trialing`.
 
 The public product site `www.dakshcwm.com` is not part of this check.
 
 Ship a host that contains the license gate before this has any effect. Publishing that installer is in [CWM.SolidWorks.Mcp.Host.Setup/RELEASE.md](../../CWMServer/CWM.SolidWorks.Mcp.Host.Setup/RELEASE.md). Installers people already have keep running with no license check.
 
-## Stripe
+## Dodo Payments
 
-Use test mode until the checks below pass. A test-mode trial stays in test mode. Switching the plugin to the live secret and a live price lets the same PC start its live trial.
+Use test mode until the checks below pass. A test-mode trial stays in test mode. Switching the plugin to Live and a live API key lets the same PC start its live trial.
 
-### Price
+### Product
 
-1. In the Stripe Dashboard open **Product catalog** and add a product for SolidWorks MCP.
-2. Add a **recurring** price (monthly or yearly). Copy the price id. It starts with `price_`.
-3. Leave the price trial blank. Trial length lives only in the plugin setting **Trial days**. A trial saved on the price would start again the next time someone pays.
+In the Dodo dashboard create a subscription product for SolidWorks MCP:
 
-Use a test-mode price with `sk_test_` or `rk_test_`. Use a live-mode price with `sk_live_` or `rk_live_`. A test price and a live secret reject each other.
+1. Pricing type **Subscription**. Tax category **SaaS**. Price at least the minimum for that currency (1.00 USD, or the equivalent).
+2. **Repeat payment every** is the billing cadence, monthly or yearly.
+3. **Subscription period** is 20 years. If the period equals the payment frequency, Dodo ends the subscription after one charge.
+4. Leave **Trial Period (Days)** unchecked. Leave **Trial Amount** empty. Leave **Card-optional at $0 Price** unchecked. The plugin **Trial days** setting is the trial length.
+5. Copy the product id. It starts with `pdt_`.
 
-### Secret key
+For an Indian card or UPI, turn on **Settings → Business → Adaptive Currency**. The product price can stay in USD. Checkout converts it to INR when the billing country is India. An Indian subscription mandate is INR-only, so a USD checkout will not take an Indian card.
 
-1. Open [API keys](https://dashboard.stripe.com/apikeys).
-2. Copy the secret key (`sk_test_...` or, when you go live, `sk_live_...`).
+Leave **Prevent trial misuse** off. The plugin passes `trial_period_days` explicitly, and Dodo skips that check when the field is present. The trial here is one per Windows machine, not one per email.
 
-A restricted key (`rk_test_` or `rk_live_`) is accepted when it can create customers, subscriptions, Checkout sessions, and Billing Portal sessions, and can search customers and subscriptions. The secret stays in WordPress. Do not put it in the host, in `appsettings.json`, or in the public `solidworks-mcp` repository.
+### API key
 
-### Customer Portal
+1. Open **Developer → API Keys** in the same mode as the plugin setting.
+2. Copy the API key.
 
-The host opens the Customer Portal when someone adds a card during the trial, and when a subscription already exists.
+The key stays in WordPress. Do not put it in the host, in `appsettings.json`, or in the public `solidworks-mcp` repository.
 
-1. Open [Customer portal settings](https://dashboard.stripe.com/settings/billing/portal).
-2. Activate the portal.
-3. Allow customers to update their payment method.
-4. Save. The return address is the WordPress home page. The plugin sends that when it creates the portal session.
+### Customer portal
 
-If the portal is off, Stripe rejects the billing-page request and the host tells the user it could not open the payment page.
+The host opens a Dodo customer portal session when a subscription already has a customer. Until then, the same button opens checkout so the person can add a card. Checkout collects the email and billing country. The host does not have those.
+
+If the trial ends with no card, Dodo moves the subscription to `on_hold`. The plugin reports that as `past_due`. Adding a card in the portal reactivates it.
 
 ## WordPress
 
-The site is `https://www.cloudcadai.com`. WordPress 5.8 or newer and PHP 7.4 or newer. The server must be able to call `https://api.stripe.com` (the plugin uses `wp_remote_request`, 20 second timeout).
+The site is `https://www.cloudcadai.com`. WordPress 5.8 or newer and PHP 7.4 or newer. The server must be able to call `https://test.dodopayments.com` or `https://live.dodopayments.com` (the plugin uses `wp_remote_request`, 20 second timeout).
 
 ### Permalinks
 
@@ -57,9 +60,9 @@ The version comes from the `Version:` line in `cwm-mcp-license.php`. The zip roo
 On cloudcadai.com:
 
 1. **Plugins → Add New → Upload Plugin**, choose the zip, install, and activate.
-2. Activation creates the table `wp_cwm_swx_mcp_usage` (the `wp_` prefix follows the site) and a daily job that deletes usage rows older than 90 days.
+2. Activation creates the table `wp_cwm_swx_mcp_usage` (the `wp_` prefix follows the site) and a daily job that deletes usage rows older than 90 days. It also creates `wp_cwm_swx_mcp_installs` for the machine id, the trial end, and the Dodo customer and subscription.
 
-To replace a plugin that is already installed, upload again or replace `wp-content/plugins/CwmMcpLicense/` and keep the plugin active. **Deactivate** keeps the Stripe settings and the usage table. **Delete** runs `uninstall.php`, which removes the option `cwm_mcp_license_settings`, drops the usage table, and clears the prune job.
+To replace a plugin that is already installed, upload again or replace `wp-content/plugins/CwmMcpLicense/` and keep the plugin active. **Deactivate** keeps the settings and the usage table. **Delete** runs `uninstall.php`, which removes the option `cwm_mcp_license_settings`, drops the usage and install tables, and clears the prune job.
 
 Leave the routes public. A security plugin that requires a logged-in user for `/wp-json/` blocks the host.
 
@@ -69,23 +72,27 @@ Leave the routes public. A security plugin that requires a logged-in user for `/
 
 | Field | What to enter |
 |---|---|
-| Stripe secret key | The secret from the matching Stripe mode. After one is saved, leave the box blank to keep it. |
-| Subscription price id | The `price_...` id. The page rejects any other prefix. |
-| Trial days | 1–365. The default is 30. This is the only trial length. |
+| Mode | Test until the checks below pass. Live uses the live API host and a live key. |
+| Dodo Payments API key | The key for that mode. After one is saved, leave the box blank to keep it. A Stripe `sk_` or `rk_` key is rejected. |
+| Product id | The `pdt_...` id. The page rejects any other prefix. |
+| Trial days | 1–365. The default is 30. This is the only trial length for a new machine. |
 
-Save. A bad secret prefix or a price id that does not start with `price_` is rejected and the previous value stays.
+Save. A bad key or a product id that does not start with `pdt_` is rejected and the previous value stays.
 
 **Settings → SolidWorks MCP usage** should open. An empty table is expected until a trialing or active install sends events.
 
 ## Check the license service
 
-Use a made-up GUID in test mode. A `POST` to `/trial` creates a real Stripe customer and subscription for that id. Repeat the same id and Stripe returns the subscription it already created. It does not start a second trial.
+Use Dodo test mode. No money moves. A real bank card fails in test mode, and a test card fails in live mode. Stay in the Dodo test dashboard, set the plugin **Mode** to **Test**, and use the test API key with the test `pdt_` id.
 
-In PowerShell, against the site:
+Use a made-up GUID. Do not use a PC’s `MachineGuid` unless you intend to consume that machine’s trial. SolidWorks does not need to be open.
+
+In PowerShell:
 
 ```powershell
 $guid = "11111111-1111-1111-1111-111111111111"
-Invoke-RestMethod "https://www.cloudcadai.com/wp-json/cwm-mcp/v1/status?install_id=$guid"
+$base = "https://www.cloudcadai.com/wp-json/cwm-mcp/v1"
+Invoke-RestMethod "$base/status?install_id=$guid"
 ```
 
 Before any trial, the body is:
@@ -94,10 +101,10 @@ Before any trial, the body is:
 {"status":"none","trial_end":null}
 ```
 
-Start the trial:
+Start the trial. This writes WordPress only. Dodo has no customer yet.
 
 ```powershell
-Invoke-RestMethod "https://www.cloudcadai.com/wp-json/cwm-mcp/v1/trial" -Method Post -ContentType "application/json" -Body (@{ install_id = $guid } | ConvertTo-Json)
+Invoke-RestMethod "$base/trial" -Method Post -ContentType "application/json" -Body (@{ install_id = $guid } | ConvertTo-Json)
 ```
 
 A healthy body looks like:
@@ -106,45 +113,94 @@ A healthy body looks like:
 {"status":"trialing","trial_end":"2026-11-23T00:00:00+00:00"}
 ```
 
-`trial_end` is the UTC end of the plugin’s trial days. In Stripe, that customer has metadata `install_id` set to the GUID, the subscription is `trialing`, there is no card, and the trial end behavior for a missing payment method is **cancel**.
+`trial_end` is the UTC end of the plugin’s trial days. Call `/trial` again with the same GUID. The status stays `trialing` and `trial_end` does not move.
 
-Call `/trial` a second time with the same GUID. The status stays `trialing` and Stripe still has one subscription for that id.
-
-Then:
+Open checkout:
 
 ```powershell
-Invoke-RestMethod "https://www.cloudcadai.com/wp-json/cwm-mcp/v1/portal" -Method Post -ContentType "application/json" -Body (@{ install_id = $guid } | ConvertTo-Json)
+$pay = Invoke-RestMethod "$base/portal" -Method Post -ContentType "application/json" -Body (@{ install_id = $guid } | ConvertTo-Json)
+$pay.url
 ```
 
-The body is `{"url":"https://billing.stripe.com/..."}`. Open it and confirm the portal loads. During a trial, `POST /checkout` also returns a portal URL, because a second subscription is not created while the status is `trialing`, `active`, or `past_due`.
+That URL should start with `https://test.checkout.dodopayments.com/`. A `live.checkout.dodopayments.com` host means the plugin is in Live mode. Open it once. It expires in 24 hours. Pay with a test card:
 
-`install_id` must be a GUID. Anything else returns HTTP 400. A missing secret or price returns HTTP 503. Stripe rejecting the call returns HTTP 502.
+| Buyer | Card | Number | Expiry | CVV |
+|---|---|---|---|---|
+| India | Visa | `4576238912771450` | `06/32` | `123` |
+| Outside India | Visa | `4242424242424242` | `06/32` | `123` |
 
-After the test, delete that customer in the Stripe test dashboard if you do not want it left behind.
+Any name and email are fine. During the trial the $35 is not charged. Dodo saves the card and the first real charge is at `trial_end`.
+
+For the Indian card, set the checkout billing country to **India**. Adaptive Currency must be on, so the charge is in INR. The US test number is not an Indian card and will not start an INR mandate. UPI in test mode is `success@upi`, and it also requires billing country India and INR.
+
+A decline card is only for a failed-payment test: India Visa `4706131211212123`, or US Visa `4000000000000002`.
+
+After the browser returns to cloudcadai.com, call status again:
+
+```powershell
+Invoke-RestMethod "$base/status?install_id=$guid"
+```
+
+Status stays `trialing`. In the Dodo test dashboard there is one customer, one subscription, one payment of amount 0, and `metadata.install_id` equals the GUID. The subscription next bill matches `trial_end`.
+
+Call `/portal` again. The URL is now the customer portal, not a new checkout. `POST /checkout` does the same once a customer exists. After the trial, checkout is sent with `trial_period_days` 0.
+
+`install_id` must be a GUID. Anything else returns HTTP 400. A missing key or product id returns HTTP 503. Dodo rejecting the key, the mode, or the product returns HTTP 502.
+
+After the test, delete that customer in the Dodo test dashboard if you do not want it left behind.
+
+### End the trial on an installed PC
+
+Use this when SolidWorks MCP is already installed and you want the payment dialog without waiting for the trial days. The made-up GUID above does not affect an installed PC. The installed host uses that PC’s `MachineGuid`.
+
+On the PC:
+
+```powershell
+(Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Cryptography' -Name MachineGuid).MachineGuid
+```
+
+In the cloudcadai.com database, set that id’s trial end to a time in the past. Replace the id below, and replace `wp_` if the site uses another table prefix.
+
+```sql
+UPDATE wp_cwm_swx_mcp_installs
+SET trial_end_gmt = '2026-10-23 00:00:00'
+WHERE install_id = '4945d427-aca6-45f7-a3f3-8399510e8ae0';
+```
+
+Confirm the license service:
+
+```powershell
+Invoke-RestMethod "https://www.cloudcadai.com/wp-json/cwm-mcp/v1/status?install_id=4945d427-aca6-45f7-a3f3-8399510e8ae0"
+```
+
+The body is `"status": "canceled"`. Reload the MCP server. **Yes** opens checkout with no trial days left, so the $35 is due now. Use the same test cards as above. **No** opens checkout as well when this machine has no Dodo customer yet. **Cancel** exits.
+
+This does not start a second trial on that PC. To put the trial back, set `trial_end_gmt` to a future UTC time before any Dodo subscription exists. After a card is saved, Dodo’s `next_billing_date` controls the trial, and changing `trial_end_gmt` does not end it.
 
 ### What each route does
 
 | Route | When the host calls it | Result |
 |---|---|---|
-| `GET /status?install_id=` | Every startup | `status` and `trial_end`. `none` means this machine has no subscription. |
-| `POST /trial` with `{"install_id":"..."}` | Startup when status is `none` | Creates a no-card trial, or returns the subscription that already exists. |
-| `POST /checkout` | The user chooses **Yes** after the trial has ended | Checkout page that collects a card. A later payment does not send trial days, so the Price must have no trial of its own. An existing trialing, active, or past-due subscription returns the portal instead. |
-| `POST /portal` | The user chooses **No** on the payment dialog, or **Yes** on the “add a card” reminder | Customer Portal for that machine. |
+| `GET /status?install_id=` | Every startup | `status` and `trial_end`. `none` means this machine has no trial and no subscription. |
+| `POST /trial` with `{"install_id":"..."}` | Startup when status is `none` | Records a no-card trial, or returns the subscription that already exists. |
+| `POST /checkout` | The user chooses **Yes** after the trial has ended | Checkout page that collects a card. Trial days are 0. An existing trialing, active, or past-due subscription that already has a customer returns the portal instead. |
+| `POST /portal` | The user chooses **No** on the payment dialog, or **Yes** on the “add a card” reminder | Customer portal when a Dodo customer exists. Checkout for the days still left when it does not. |
 | `POST /events` | While the tools are running | Daily usage totals. A machine that is not `trialing` or `active` gets `{"accepted":0}` and nothing is stored. |
 
-Checkout success and cancel land on the WordPress home page with `?cwm_swx_mcp=success` or `?cwm_swx_mcp=cancel`. Those addresses only bring the person back to the site. The host does not watch the browser.
+Checkout success and cancel land on the WordPress home page with `?cwm_swx_mcp=success` or `?cwm_swx_mcp=cancel`. Those addresses only bring the person back to the site. The host does not watch the browser. The plugin reads `install_id` from the return address and `subscription_id` when Dodo appends it, then confirms `metadata.install_id` on the payment or the subscription.
 
 Status names the host understands:
 
-| Stripe status | Value the plugin returns | Host |
+| Dodo state | Value the plugin returns | Host |
 |---|---|---|
-| `trialing` | `trialing` | Tools start |
-| `active` | `active` | Tools start |
-| `past_due`, `unpaid`, `incomplete` | `past_due` | Payment dialog |
-| `canceled`, `incomplete_expired`, `paused`, anything else | `canceled` | Payment dialog |
-| no subscription | `none` | Host calls `/trial` |
+| No Dodo subscription, trial end still ahead | `trialing` | Tools start |
+| `active`, no card, or one payment of amount 0, next bill still ahead | `trialing` | Tools start |
+| `active` after the trial | `active` | Tools start |
+| `pending`, `on_hold`, `past_due`, `failed` | `past_due` | Payment dialog |
+| `cancelled`, `paused`, `expired`, trial ended with no subscription | `canceled` | Payment dialog |
+| no trial and no subscription | `none` | Host calls `/trial` |
 
-When the trial ends with no card, Stripe cancels the subscription. The next startup gets `canceled` and opens the payment dialog.
+When a Dodo trial ends with no card, Dodo sets `on_hold`. The next startup gets `past_due` and opens the payment dialog. A WordPress-only trial that ends with no checkout returns `canceled`.
 
 ## MCP host
 
@@ -170,19 +226,21 @@ Starting the host with no arguments (the way Cursor, Claude, and Codex start it)
 
 If Windows has no `MachineGuid`, the host exits. If `/trial` fails, a dialog says the trial could not start, stderr prints `SolidWorks MCP needs an active trial or subscription.`, and the process exits 1. The MCP client then shows the server as failed. Reload it after the network or the plugin is fixed.
 
-Deleting `license.dat`, or signing in as another Windows user on the same PC, does not start another trial. Stripe already has that machine id. A new PC, a new virtual machine, a Windows reinstall, or an administrator edit of `MachineGuid` looks like a new machine and can start a trial.
+Deleting `license.dat`, or signing in as another Windows user on the same PC, does not start another trial. WordPress already has that machine id. A new PC, a new virtual machine, a Windows reinstall, or an administrator edit of `MachineGuid` looks like a new machine and can start a trial.
 
 ### Near the end of the trial, and after it
 
-In the last 3 days, while status is still `trialing`, a Yes/No dialog offers to add a card. **Yes** opens the portal. **No** continues. Either way the tools start.
+In the last 3 days, while status is still `trialing`, a Yes/No dialog offers to add a card. **Yes** opens the portal, or checkout when no Dodo customer exists yet. **No** continues. Either way the tools start.
+
+To see that dialog before the trial days run out, follow [End the trial on an installed PC](#end-the-trial-on-an-installed-pc).
 
 After the trial, or when status is `past_due` or `canceled`:
 
-- **Yes** opens Checkout (card required, no second trial).
-- **No** opens the billing page.
+- **Yes** opens Checkout (card required, `trial_period_days` 0).
+- **No** opens the billing page, or checkout when no customer exists yet.
 - **Cancel** exits.
 
-The host does not see the card. After the person finishes on Stripe’s page, they reload the MCP client so startup calls `/status` again. While a dialog is open, stdio has not started, so the client can show the server as failed until the dialog is answered and the client is reloaded.
+The host does not see the card. After the person finishes on Dodo’s page, they reload the MCP client so startup calls `/status` again. While a dialog is open, stdio has not started, so the client can show the server as failed until the dialog is answered and the client is reloaded.
 
 If cloudcadai.com cannot be reached:
 
@@ -198,11 +256,11 @@ The payload is tool name, outcome, duration, exception type name, API member nam
 
 ## Go-live list
 
-1. Stripe live price has no trial. Customer Portal is on and payment-method updates are allowed.
-2. Plugin on cloudcadai.com is version 1.0.0 or newer (`cwm-mcp-license.php`), active, with the live secret, the live `price_` id, and the trial days you want.
+1. The live product is a subscription with a 20-year period, **Trial Period** unchecked, and **Trial Amount** empty. Adaptive Currency is on if Indian cards must work.
+2. Plugin on cloudcadai.com is version 1.1.0 or newer (`cwm-mcp-license.php`), active, mode Live, with the live API key, the live `pdt_` id, and the trial days you want.
 3. Permalinks are not Plain. `GET /wp-json/cwm-mcp/v1/status?install_id=` with a GUID returns JSON.
-4. A test-mode `/trial` returned `trialing` and a second call did not create another subscription. For live, do this once with a GUID you can delete, or with your own PC, and confirm the Stripe subscription has no card and cancels when the payment method is missing.
+4. A test-mode `/trial` returned `trialing` and a second call did not move `trial_end`. For live, do this once with a GUID you can delete, or with your own PC.
 5. `POST /portal` for that id returns an `https://` URL and the page opens.
 6. A new host installer is published with [RELEASE.md](../../CWMServer/CWM.SolidWorks.Mcp.Host.Setup/RELEASE.md). Customer machines do not have `CWM_SOLIDWORKS_MCP_LICENSE_URL` set.
-7. On a PC with that installer, the first MCP start shows no payment page, Stripe shows one `trialing` subscription for that PC’s `MachineGuid`, and **SolidWorks MCP usage** gains rows after tools run.
-8. Reloading the MCP client after adding a card or paying shows the tools starting with no payment dialog.
+7. On a PC with that installer, the first MCP start shows no payment page, WordPress has one trial row for that PC’s `MachineGuid`, and **SolidWorks MCP usage** gains rows after tools run.
+8. Reloading the MCP client after adding a card or paying shows the tools starting with no payment dialog. Dodo shows one subscription for that machine, and `metadata.install_id` is the machine id.

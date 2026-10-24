@@ -54,7 +54,7 @@ class CWM_Swx_Mcp_Rest
         if (is_wp_error($install_id)) {
             return $install_id;
         }
-        $found = CWM_Swx_Mcp_Stripe::start_trial($install_id);
+        $found = CWM_Swx_Mcp_Dodo::start_trial($install_id);
         if (is_wp_error($found)) {
             return $found;
         }
@@ -66,10 +66,7 @@ class CWM_Swx_Mcp_Rest
 
     public static function checkout_return(WP_REST_Request $request): void
     {
-        $session_id = $request->get_param('session_id');
-        if (is_string($session_id)) {
-            CWM_Swx_Mcp_Stripe::remember_checkout_session($session_id);
-        }
+        CWM_Swx_Mcp_Dodo::complete_return($request);
         wp_safe_redirect(add_query_arg('cwm_swx_mcp', 'success', home_url('/')));
         exit;
     }
@@ -83,7 +80,7 @@ class CWM_Swx_Mcp_Rest
         if (is_wp_error($install_id)) {
             return $install_id;
         }
-        $url = CWM_Swx_Mcp_Stripe::checkout_url($install_id);
+        $url = CWM_Swx_Mcp_Dodo::checkout_url($install_id);
         if (is_wp_error($url)) {
             return $url;
         }
@@ -99,7 +96,7 @@ class CWM_Swx_Mcp_Rest
         if (is_wp_error($install_id)) {
             return $install_id;
         }
-        $found = CWM_Swx_Mcp_Stripe::find_subscription($install_id);
+        $found = CWM_Swx_Mcp_Dodo::find_subscription($install_id);
         if (is_wp_error($found)) {
             return $found;
         }
@@ -118,7 +115,7 @@ class CWM_Swx_Mcp_Rest
         if (is_wp_error($install_id)) {
             return $install_id;
         }
-        $url = CWM_Swx_Mcp_Stripe::portal_url($install_id);
+        $url = CWM_Swx_Mcp_Dodo::portal_url($install_id);
         if (is_wp_error($url)) {
             return $url;
         }
@@ -135,7 +132,7 @@ class CWM_Swx_Mcp_Rest
             return $install_id;
         }
 
-        $found = CWM_Swx_Mcp_Stripe::find_subscription($install_id);
+        $found = CWM_Swx_Mcp_Dodo::find_subscription($install_id);
         if (is_wp_error($found) || ($found['status'] !== 'trialing' && $found['status'] !== 'active')) {
             return new WP_REST_Response(array('accepted' => 0), 200);
         }

@@ -194,7 +194,7 @@ class CWM_Swx_Mcp_Usage
         $since = gmdate('Y-m-d', time() - (30 * DAY_IN_SECONDS));
         echo '<div class="wrap">';
         echo '<h1>SolidWorks MCP usage</h1>';
-        echo '<p>Totals since ' . esc_html($since) . ' (UTC). Payments stay in Stripe.</p>';
+        echo '<p>Totals since ' . esc_html($since) . ' (UTC). Payments stay in Dodo Payments.</p>';
         echo '<h2>Top tools</h2>';
         self::render_table(self::top_tools($since), 'Tool', 'tool_name');
         echo '<h2>Top errors</h2>';
