@@ -1,0 +1,11 @@
+# Plugin packages produced by package-plugin.bat
+dist/
+*.zip
+
+# OS and editor
+Thumbs.db
+Desktop.ini
+.DS_Store
+.idea/
+.vscode/
+*.log
